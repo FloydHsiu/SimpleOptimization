@@ -82,8 +82,8 @@ class golden_section_iteration:
             yl = np.append(yl, d['yl'])
             yr = np.append(yr, d['yr'])
 
-        ax.plot(x, yl, linewidth=1, label='f(l)')
-        ax.plot(x, yr, linewidth=1, label='f(r)')
+        ax.plot(x, yl, marker='.', linewidth=1, label='f(l)')
+        ax.plot(x, yr, marker='.', linewidth=1, label='f(r)')
         ax.set_xlabel('Iteration times')
         ax.set_ylabel('Func(x)')
         ax.set_aspect('auto')
@@ -139,6 +139,8 @@ class quadratic_interpolation:
         #cal l, m, u, x_star fn value
         fl, fm, fu = fn_f(l), fn_f(m), fn_f(u)
         x_star = cal_x_star()
+        if x_star < l: x_star = l
+        elif x_star > u: x_star = u
         fx_star = fn_f(x_star)
         #keep iterator datas
         d = {'l': l, 'f(l)': fl, 'm':m, 'f(m)': fm, 'u':u, 'f(u)':fu, 'x*':x_star, 'f(x*)':fx_star}
@@ -219,7 +221,7 @@ class quadratic_interpolation_iteration:
         #ax.plot(x, yl, linewidth=1, label='f(l)')
         #ax.plot(x, ym, linewidth=1, label='f(m)')
         #ax.plot(x, yu, linewidth=1, label='f(u)')
-        ax.plot(x, ystar, linewidth=1, label='f(x*)')
+        ax.plot(x, ystar, marker='.', linewidth=1, label='f(x*)')
         ax.set_xlabel('Iteration times')
         ax.set_ylabel('Func(x)')
         ax.set_aspect('auto')
@@ -285,6 +287,32 @@ class quadratic_interpolation_iteration:
         ax.legend(loc='best')
         return ax
     
+    def plotQuadraticFunc(self, times):
+        x = np.linspace(-1, 10, 1100)
+        _, ax = plt.subplots()
+        for t in range(0, times):
+            if t < self.times:
+                iterate = self.iteration[t]
+                fn_q = lambda x: fl*(x-m)*(x-u)/((l-m)*(l-u)) + fm*(x-l)*(x-u)/((m-l)*(m-u)) +\
+                                fu*(x-l)*(x-m)/((u-l)*(u-m))
+                l = iterate['l']
+                m = iterate['m']
+                u = iterate['u']
+                fl = iterate['f(l)']
+                fm = iterate['f(m)']
+                fu = iterate['f(u)']
+                star = iterate['x*']
+                fstar = iterate['f(x*)']
+                y = np.array([])
+                for i in range(0, len(x)):
+                    y = np.append(y, fn_q(x[i]))
+                ax.plot(x, y, label='{}'.format(t))
+                ax.plot(star, fstar, marker='o')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_aspect('auto')
+        ax.legend(loc='best')
+
     def printIteration(self):
         print('\n' + 'iteration step:')
         for i in range(0, self.times):
@@ -293,8 +321,8 @@ class quadratic_interpolation_iteration:
 
     def getResult(self):
         result = {}
-        result["x"] = self.iteration["x"]
-        result["f(x)"] = self.iteration["localmin"]
+        result["x"] = self.x
+        result["f(x)"] = self.localmin
         return result
 
 class univariate:
