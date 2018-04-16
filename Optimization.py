@@ -334,11 +334,17 @@ class univariate:
         self.var_range = var_range
         self.init_point = init_point
         self.tol = tol
-        self.directions = 0.1 * np.identity(self.var_size)
+        self.directions = 1 * np.identity(self.var_size)
 
     def func_lambda(self, func, y, d):
         func_l = lambda x: func(y+x*d)
         return func_l
+
+    def is_boundary_y(self, y):
+        compare = y[0] >= self.var_range[:, 0]
+        compare = np.logical_and(compare, y[0] <= self.var_range[:, 1])
+        if compare.sum() == self.var_size: return True
+        else: return False
 
     def start(self, ismin):
         k = 0
@@ -346,42 +352,78 @@ class univariate:
         #step1
         y = np.array([self.init_point])
         a_g = golden_section(self.func_lambda(self.func, y[0], self.directions[0]), \
-                            self.var_range[0][0], self.var_range[0][1], 10-5)
+                            self.var_range[0][0], self.var_range[0][1], 10e-7)
         if(ismin): a_g_iter = golden_section_iteration(a_g.findMin())
         else: a_g_iter = golden_section_iteration(a_g.findMax())
         min_lambda = a_g_iter.getResult()["x"]
         #dbg = np.array([y[0]+min_lambda*self.directions[0]])
-        y = np.append(y, np.array([y[0]+min_lambda*self.directions[0]]), axis=0)
+        new_y = np.array([y[0]+min_lambda*self.directions[0]])
+        if self.is_boundary_y(new_y):
+            y = np.append(y, new_y, axis=0)
+        else:
+            return y
         for i in range(1, self.var_size):
             a_g = golden_section(self.func_lambda(self.func, y[i], self.directions[i]), \
-                            self.var_range[i][0], self.var_range[i][1], 10-5)
+                            self.var_range[i][0], self.var_range[i][1], 10e-7)
             if(ismin): a_g_iter = golden_section_iteration(a_g.findMin())
             else: a_g_iter = golden_section_iteration(a_g.findMax())
             min_lambda = a_g_iter.getResult()["x"]
-            y = np.append(y, np.array([y[i]+min_lambda*self.directions[i]]), axis=0)
+            new_y = np.array([y[i]+min_lambda*self.directions[i]])
+            if self.is_boundary_y(new_y):
+                y = np.append(y, new_y, axis=0)
+            else:
+                return y
         k = self.var_size
         times = times+1
         #step2
         while np.linalg.norm(y[self.var_size] - y[self.var_size-1]) > self.tol:
             for i in range(0, self.var_size):
                 a_g = golden_section(self.func_lambda(self.func, y[k+i], self.directions[i]), \
-                                self.var_range[i][0], self.var_range[i][1], 10-7)
+                                self.var_range[i][0], self.var_range[i][1], 10e-7)
                 if(ismin): a_g_iter = golden_section_iteration(a_g.findMin())
                 else: a_g_iter = golden_section_iteration(a_g.findMax())
                 min_lambda = a_g_iter.getResult()["x"]
-                y = np.append(y, np.array([y[k+i]+min_lambda*self.directions[i]]), axis=0)
+                new_y = np.array([y[k+i]+min_lambda*self.directions[i]])
+                if self.is_boundary_y(new_y):
+                    y = np.append(y, new_y, axis=0)
+                else:
+                    return y
             k = self.var_size + k
             times = times+1
             if times > 1000:
                 break
-
-        return y
+        result = {}
+        result['iterations'] = y
+        result['x'] = new_y[0]
+        result['localmin'] = self.func(new_y[0])
+        return result
 
     def findMin(self):
         return self.start(True)
 
     def findMax(self):
         return self.start(False)
+
+class univariate_iteration:
+    def __init__(self, result):
+        self.iterations = result['iterations']
+        self.x = result['x']
+        self.localmin = result['localmin']
+        self.times = len(self.iterations)
+
+    def plotIteration(self, ax):
+        ax.plot(self.iterations[:, 0], self.iterations[:, 1], marker='.', label='Univariate')
+
+        ax.set_xlabel('X1')
+        ax.set_ylabel('X2')
+        ax.set_aspect('auto')
+        ax.legend(loc='best')
+    
+    def getResult(self):
+        result = {}
+        result['x'] = self.x.tolist()
+        result['f(x)'] = self.localmin
+        return result
 
 '''Multi-variable unconstraint optimization'''
 
@@ -426,7 +468,7 @@ class downhill_simplex:
         return
 
     def stop_critarial(self):
-        if abs(self.x['max'] - self.x['min']) < self.tol:
+        if np.linalg.norm(self.x['max'] - self.x['min']) < self.tol:
             return True
         else:
             return False
@@ -435,14 +477,18 @@ class downhill_simplex:
         return (self.vecs.sum(axis=0) - self.x['max']) / (len(self.vecs) - 1)
 
     def cal_x_reflect(self):
-        return self.x['max'] + self.alpha * (self.x['average'] - self.x['max'])
+        return self.x['average'] + self.alpha * (self.x['average'] - self.x['max'])
 
     def cal_x_expansion(self):
         return self.x['average'] + self.gamma * (self.x['reflect'] - self.x['average'])
     
     def start(self):
+        iterations = list()
+        iterations.append(np.copy(self.vecs))
         #step1
         self.find_x_minmax()
+        #print("min " + str(self.x["min"]) + str(self.fn_x["min"]))
+        #print("max " + str(self.x["max"]) + str(self.fn_x["max"]))
         while not self.stop_critarial():
             self.x['average'] = self.cal_x_average()
             #step2
@@ -477,6 +523,43 @@ class downhill_simplex:
                         #goto step1
                     else:
                         self.vecs[self.max_index] = self.x['contraction']#goto step 1
+            iterations.append(np.copy(self.vecs))
             #step1
             self.find_x_minmax()
-        return
+        result = {}
+        result['iterations'] = iterations
+        result['x'] = self.x['min']
+        result['localmin'] = self.fn_x['min']
+        return result
+
+class downhill_simplex_iteration:
+    def __init__(self, result):
+        self.x = result['x']
+        self.localmin = result['localmin']
+        self.iterations = result['iterations']
+        self.times = len(self.iterations)
+        self.simplex_centers = self.cal_simplex_centers()
+
+    def cal_simplex_centers(self):
+        centers = []
+        for i in range(0, self.times):
+            simplex_size = len(self.iterations[i])
+            center = self.iterations[i].sum(axis=0) / simplex_size
+            centers.append(center)
+        centers = np.array(centers)
+        return centers
+
+    def plotIteration(self, ax):
+        ax.plot(self.simplex_centers[:, 0], self.simplex_centers[:, 1], marker='.', label='Center of Simplex')
+
+        ax.set_title('Downhill Simplex')
+        ax.set_xlabel('X1')
+        ax.set_ylabel('X2')
+        ax.set_aspect('auto')
+        ax.legend(loc='best')
+
+    def getResult(self):
+        result = {}
+        result['x'] = self.x.tolist()
+        result['f(x)'] = self.localmin
+        return result
